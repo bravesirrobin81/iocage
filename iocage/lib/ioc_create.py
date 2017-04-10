@@ -20,7 +20,7 @@ class IOCCreate(object):
 
     def __init__(self, release, props, num, pkglist=None, plugin=False,
                  migrate=False, config=None, silent=False, template=False,
-                 short=False, basejail=False, empty=False, uuid=None):
+                 short=False, basejail=False, empty=False, uuid=None, sshd_enabled=False):
         self.pool = IOCJson().json_get_value("pool")
         self.iocroot = IOCJson(self.pool).json_get_value("iocroot")
         self.release = release
@@ -35,6 +35,7 @@ class IOCCreate(object):
         self.basejail = basejail
         self.empty = empty
         self.uuid = uuid
+        self.sshd_enabled=sshd_enabled
         self.lgr = logging.getLogger('ioc_create')
 
         if silent:
@@ -473,6 +474,7 @@ class IOCCreate(object):
 
     def create_rc(self, location, host_hostname):
         """Writes a boilerplate rc.conf file for a jail."""
+        sshd_enable="YES" if self.sshd_enabled else "NO"
         rcconf = """\
 host_hostname="{hostname}"
 cron_flags="$cron_flags -J 15"
@@ -488,7 +490,9 @@ syslogd_flags="-c -ss"
 
 # Enable IPv6
 ipv6_activate_all_interfaces=\"YES\"
+sshd_enable=\"{sshd_enable}\"
 """
 
         with open("{}/root/etc/rc.conf".format(location), "w") as rc_conf:
-            rc_conf.write(rcconf.format(hostname=host_hostname))
+            rc_conf.write(rcconf.format(hostname=host_hostname,
+                                        sshd_enable=sshd_enable))

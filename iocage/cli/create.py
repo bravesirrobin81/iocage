@@ -36,9 +36,11 @@ def validate_count(ctx, param, value):
 @click.option("--short", "-s", is_flag=True, default=False,
               help="Use a short UUID of 8 characters instead of the default "
                    "36")
+@click.option("--enable-sshd", is_flag=True ,default=False,
+              help="Enable access to the jail via SSH")
 @click.argument("props", nargs=-1)
 def create_cmd(release, template, count, props, pkglist, basejail, empty,
-               short, uuid):
+               short, uuid, enable_sshd):
     lgr = ioc_logger.Logger('ioc_cli_create').getLogger()
 
     if short and uuid:
@@ -95,7 +97,8 @@ def create_cmd(release, template, count, props, pkglist, basejail, empty,
         try:
             IOCCreate(release, props, 0, pkglist,
                       template=template, short=short, uuid=uuid,
-                      basejail=basejail, empty=empty).create_jail()
+                      basejail=basejail, empty=empty,
+                      sshd_enabled=enable_sshd).create_jail()
         except RuntimeError as err:
             lgr.error(err)
             if template:
@@ -108,7 +111,8 @@ def create_cmd(release, template, count, props, pkglist, basejail, empty,
             try:
                 IOCCreate(release, props, j, pkglist,
                           template=template, short=short,
-                          basejail=basejail, empty=empty).create_jail()
+                          basejail=basejail, empty=empty,
+                          sshd_enabled=enable_sshd).create_jail()
             except RuntimeError as err:
                 lgr.error(err)
                 if template:
