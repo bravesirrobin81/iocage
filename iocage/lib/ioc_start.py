@@ -309,48 +309,55 @@ class IOCStart(object):
             nics = self.get("interfaces").split(",")
 
             for nic in nics:
-                self.start_network_interface_vnet(nic, net_configs, jid)
+                self.start_network_interface_vnet(nic, jid)
+            self.configure_ip_vnet(net_configs, jid)
 
-    def start_network_interface_vnet(self, nic, net_configs, jid):
+    def configure_ip_vnet(self, net_configs, jid):
         """
         Start VNET on interface
 
-        :param nic: The network interface to assign the IP in the jail
         :param net_configs: Tuple of IP address and router pairs
+        :param jid: The jails ID
+        """
+
+        try:
+            for addrs, gw in net_configs:
+                if addrs != 'none':
+                    for addr in addrs.split(','):
+                        iface, ip = addr.split("|")
+                        self.__add_ip_to_iface(iface, ip)
+                if gw != 'none':
+                    self.__add_gateway(gw)
+
+        except CalledProcessError as err:
+            self.lgr.warning("Network failed to start:"
+                             f" {err.output.decode('utf-8')}".rstrip())
+
+    def start_network_interface_vnet(self, nic, jid):
+        """
+        Start VNET on interface
+
+        :param nic: The network interface to bring up
         :param jid: The jails ID
         """
         nic, bridge = nic.split(":")
 
         try:
             membermtu = find_bridge_mtu(bridge)
-
-            ifaces = []
-            for addrs, gw in net_configs:
-                if addrs != 'none':
-                    for addr in addrs.split(','):
-                        iface, ip = addr.split("|")
-                        if nic != iface:
-                            err = "\n  Invalid interface supplied: {}"
-                            self.lgr.error(err.format(iface))
-                            self.lgr.error("  Did you mean {}?\n".format(nic))
-                            continue
-                        if iface not in ifaces:
-                            self.start_network_vnet_iface(nic, bridge, membermtu, jid)
-                            ifaces.append(iface)
-
-                        self.start_network_vnet_addr(iface, ip, gw)
-
+            self.start_network_vnet(nic, bridge, membermtu, jid)
         except CalledProcessError as err:
             self.lgr.warning("Network failed to start:"
                              f" {err.output.decode('utf-8')}".rstrip())
 
-    def start_network_vnet_iface(self, nic, bridge, mtu, jid):
+    def start_network_vnet(self, nic, bridge, mtu, jid):
         """
         The real meat and potatoes for starting a VNET interface.
 
         :param nic: The network interface to assign the IP in the jail
         :param bridge: The bridge to attach the VNET interface
         :param mtu: The mtu of the VNET interface
+        :param ip:  The IP address to assign
+        :param defaultgw: The gateway IP to assign to the nic
         :param jid: The jails ID
         :return: If an error occurs it returns the error. Otherwise, it's None
         """
@@ -386,34 +393,25 @@ class IOCStart(object):
         else:
             return
 
-    def start_network_vnet_addr(self, iface, ip, defaultgw):
-        """
-        Add an IP address to a vnet interface inside the jail.
-
-        :param iface: The interface to use
-        :param ip:  The IP address to assign
-        :param defaultgw: The gateway IP to assign to the nic
-        :return: If an error occurs it returns the error. Otherwise, it's None
-        """
-
+    def __add_ip_to_iface(self, iface, ip):
         # Crude check to see if it's a IPv6 address
         if ":" in ip:
             ifconfig = [iface, "inet6", ip, "up"]
-            route = ["add", "-6", "default", defaultgw]
         else:
             ifconfig = [iface, ip, "up"]
+
+        checkoutput(["jexec", f"ioc-{self.uuid}", "ifconfig"] + ifconfig,
+                    stderr=STDOUT)
+
+    def __add_gateway(self, defaultgw):
+        # Crude check to see if it's a IPv6 address
+        if ":" in defaultgw:
+            route = ["add", "-6", "default", defaultgw]
+        else:
             route = ["add", "default", defaultgw]
 
-        try:
-            # Jail side
-            checkoutput(["jexec", f"ioc-{self.uuid}", "ifconfig"] + ifconfig,
-                        stderr=STDOUT)
-            checkoutput(["jexec", f"ioc-{self.uuid}", "route"] + route,
-                        stderr=STDOUT)
-        except CalledProcessError as err:
-            return f"{err.output.decode('utf-8')}".rstrip()
-        else:
-            return
+        checkoutput(["jexec", f"ioc-{self.uuid}", "route"] + route,
+                    stderr=STDOUT)
 
     def start_findscript(self, exec_type):
         # TODO: Do something with this.
